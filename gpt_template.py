@@ -208,7 +208,7 @@ class CausalSelfAttention(nn.Module):
         # store self.num_heads, self.head_dim (= embed_dim // num_heads), self.embed_dim
         # create self.qkv, self.out_proj, self.attn_drop, self.resid_drop
         # create the causal mask and register it as a buffer named "mask"
-        assert embed_dim % num_heads == 0, "embed_dim must be divisible by num_heads"
+        assert embed_dim % num_heads == 0
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.embed_dim = embed_dim
@@ -293,12 +293,7 @@ class GPTBlock(nn.Module):
         self.norm1 = nn.LayerNorm(embed_dim)
         self.attn = CausalSelfAttention(embed_dim, num_heads, block_size, dropout)
         self.norm2 = nn.LayerNorm(embed_dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(embed_dim, mlp_dim),
-            nn.GELU(),
-            nn.Linear(mlp_dim, embed_dim),
-            nn.Dropout(dropout)
-        )
+        self.mlp = nn.Sequential(nn.Linear(embed_dim, mlp_dim),nn.GELU(),nn.Linear(mlp_dim, embed_dim),nn.Dropout(dropout))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # TODO 1.3 – forward: apply pre-norm residual connections
@@ -366,7 +361,13 @@ class GPT(nn.Module):
         super().__init__()
         self.block_size = block_size
         # TODO 1.4 – __init__: create all sub-modules and tie weights
-        raise NotImplementedError
+        self.token_embedding = nn.Embedding(vocab_size, embed_dim)
+        self.pos_embedding = nn.Embedding(block_size, embed_dim)
+        self.drop = nn.Dropout(dropout)
+        self.blocks = nn.ModuleList([GPTBlock(embed_dim, num_heads, block_size, mlp_dim, dropout) for _ in range(num_layers)])
+        self.norm = nn.LayerNorm(embed_dim)
+        self.head = nn.Linear(embed_dim, vocab_size, bias=False)
+        self.head.weight = self.token_embedding.weight
 
     def forward(self, idx: torch.Tensor) -> torch.Tensor:
         # TODO 1.4 – forward:
@@ -374,7 +375,16 @@ class GPT(nn.Module):
         # 2. Compute token and position embeddings; add them; apply dropout
         # 3. Pass through each block in self.blocks
         # 4. Apply self.norm and self.head
-        raise NotImplementedError
+        B, T = idx.shape
+        assert T <= self.block_size
+        token_emb = self.token_embedding(idx)
+        pos_emb = self.pos_embedding(torch.arange(T, device=idx.device))
+        x = self.drop(token_emb + pos_emb)
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm(x)
+        logits = self.head(x)
+        return logits
 
 
 def build_model(config: dict, vocab_size: int) -> "GPT":
