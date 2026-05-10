@@ -142,7 +142,24 @@ def get_dataset(
         itos          (dict[int, str])
     """
     # TODO 1.1: implement
-    raise NotImplementedError
+    if not os.path.isdir(data_root):
+        os.makedirs(data_root)
+    data_path = os.path.join(data_root, "input.txt")
+    if not os.path.isfile(data_path):
+        urllib.request.urlretrieve(DATA_URL, data_path)
+    with open(data_path, "r") as f:
+        text = f.read()
+    chars = sorted(set(text))
+    vocab_size = len(chars)
+    stoi = {ch: i for i, ch in enumerate(chars)}
+    itos = {i: ch for i, ch in enumerate(chars)}
+    data = torch.tensor([stoi[ch] for ch in text], dtype=torch.long)
+    split_idx = int(len(data) * train_frac)
+    train_data = data[:split_idx]
+    val_data = data[split_idx:]
+    train_dataset = CharDataset(train_data, block_size)
+    val_dataset = CharDataset(val_data, block_size)
+    return train_dataset, val_dataset, vocab_size, stoi, itos
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +208,16 @@ class CausalSelfAttention(nn.Module):
         # store self.num_heads, self.head_dim (= embed_dim // num_heads), self.embed_dim
         # create self.qkv, self.out_proj, self.attn_drop, self.resid_drop
         # create the causal mask and register it as a buffer named "mask"
-        raise NotImplementedError
+        assert embed_dim % num_heads == 0, "embed_dim must be divisible by num_heads"
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        self.embed_dim = embed_dim
+        self.qkv = nn.Linear(embed_dim, 3 * embed_dim, bias=False)
+        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.attn_drop = nn.Dropout(dropout)
+        self.resid_drop = nn.Dropout(dropout)
+        mask = torch.tril(torch.ones(block_size, block_size)).unsqueeze(0).unsqueeze(0)
+        self.register_buffer("mask", mask)  
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # TODO 1.2 – forward:
@@ -203,7 +229,21 @@ class CausalSelfAttention(nn.Module):
         # 6. Softmax over the last dimension, then apply self.attn_drop
         # 7. Multiply by v, reshape back to (B, T, C)
         # 8. Apply self.out_proj and self.resid_drop
-        raise NotImplementedError
+        B, T, C = x.shape
+        qkv = self.qkv(x)
+        q, k, v = qkv.split(C, dim=-1)
+        q = q.view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        v = v.view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        attn = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        attn = attn.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))
+        attn = F.softmax(attn, dim=-1)
+        attn = self.attn_drop(attn)
+        out = attn @ v
+        out = out.transpose(1, 2).contiguous().view(B, T, C)
+        out = self.out_proj(out)
+        out = self.resid_drop(out)
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -250,11 +290,21 @@ class GPTBlock(nn.Module):
     ):
         super().__init__()
         # TODO 1.3 – __init__: create norm1, attn, norm2, mlp
-        raise NotImplementedError
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.attn = CausalSelfAttention(embed_dim, num_heads, block_size, dropout)
+        self.norm2 = nn.LayerNorm(embed_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(embed_dim, mlp_dim),
+            nn.GELU(),
+            nn.Linear(mlp_dim, embed_dim),
+            nn.Dropout(dropout)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # TODO 1.3 – forward: apply pre-norm residual connections
-        raise NotImplementedError
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
 
 
 # ---------------------------------------------------------------------------
