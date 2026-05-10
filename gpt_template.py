@@ -457,7 +457,63 @@ def train_model(
     dict : the training log (same as what is written to log_path)
     """
     # TODO 1.5: implement
-    raise NotImplementedError
+    Optimizer = torch.optim.AdamW(model.parameters(), lr=config["lr"], weight_decay=1e-2)
+    Scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(Optimizer, T_max=config["epochs"])
+    TrainLoader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
+    ValLoader = DataLoader(val_dataset, batch_size=config["batch_size"], shuffle=False)
+    history = []
+    for epoch in range(1, config["epochs"] + 1):
+        start_time = time.time()
+        model.train()
+        train_loss = 0.0
+        for step, (x, y) in enumerate(TrainLoader):
+            if step >= config["steps_per_epoch"]:
+                break
+            Optimizer.zero_grad()
+            logits = model(x)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            Optimizer.step()
+            train_loss += loss.item()
+        train_loss /= min(config["steps_per_epoch"], len(TrainLoader))
+
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for step, (x, y) in enumerate(ValLoader):
+                if step >= 50:
+                    break
+                logits = model(x)
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
+                val_loss += loss.item()
+        val_loss /= min(50, len(ValLoader))
+
+        
+        history.append({
+            "epoch": epoch,"train_loss": train_loss,"val_loss": val_loss,
+            "epoch_time_sec": time.time() - start_time,
+        })
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        if epoch in CHECKPOINT_EPOCHS:
+            torch.save({
+                "model_state_dict": model.state_dict(),
+                "config": {k: config[k] for k in
+                        ["block_size","embed_dim","num_heads","num_layers","mlp_dim","dropout"]},
+                "epoch": epoch,
+            }, os.path.join(checkpoint_dir, f"gpt_epoch_{epoch}.pt"))
+        Scheduler.step()
+    
+    log = {
+        "seed": SEED,
+        "config": config,
+        "history": history,
+        "final_val_loss": history[-1]["val_loss"],
+        "total_params": sum(p.numel() for p in model.parameters()),
+    }
+    with open(log_path, "w") as f:
+        json.dump(log, f, indent=4)
+    return log
 
 
 # ---------------------------------------------------------------------------
