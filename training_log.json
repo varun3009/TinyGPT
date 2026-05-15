@@ -1,0 +1,50 @@
+{
+    "seed": 42,
+    "config": {
+        "block_size": 128,
+        "embed_dim": 64,
+        "num_heads": 4,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.1,
+        "lr": 0.0003,
+        "batch_size": 64,
+        "epochs": 5,
+        "steps_per_epoch": 200,
+        "vocab_size": 65
+    },
+    "history": [
+        {
+            "epoch": 1,
+            "train_loss": 9.5142,
+            "val_loss": 3.185,
+            "epoch_time_sec": 129.2488
+        },
+        {
+            "epoch": 2,
+            "train_loss": 3.2858,
+            "val_loss": 2.8703,
+            "epoch_time_sec": 147.8024
+        },
+        {
+            "epoch": 3,
+            "train_loss": 3.0544,
+            "val_loss": 2.7804,
+            "epoch_time_sec": 179.1496
+        },
+        {
+            "epoch": 4,
+            "train_loss": 2.9575,
+            "val_loss": 2.7368,
+            "epoch_time_sec": 178.2813
+        },
+        {
+            "epoch": 5,
+            "train_loss": 2.9107,
+            "val_loss": 2.7268,
+            "epoch_time_sec": 171.8432
+        }
+    ],
+    "final_val_loss": 2.7268,
+    "total_params": 145344
+}

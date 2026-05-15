@@ -457,6 +457,8 @@ def train_model(
     dict : the training log (same as what is written to log_path)
     """
     # TODO 1.5: implement
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
     Optimizer = torch.optim.AdamW(model.parameters(), lr=config["lr"], weight_decay=1e-2)
     Scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(Optimizer, T_max=config["epochs"])
     TrainLoader = DataLoader(train_dataset, batch_size=config["batch_size"], shuffle=True)
@@ -467,6 +469,7 @@ def train_model(
         model.train()
         train_loss = 0.0
         for step, (x, y) in enumerate(TrainLoader):
+            x, y = x.to(device), y.to(device)
             if step >= config["steps_per_epoch"]:
                 break
             Optimizer.zero_grad()
@@ -482,6 +485,7 @@ def train_model(
         val_loss = 0.0
         with torch.no_grad():
             for step, (x, y) in enumerate(ValLoader):
+                x, y = x.to(device), y.to(device)
                 if step >= 50:
                     break
                 logits = model(x)
@@ -491,8 +495,8 @@ def train_model(
 
         
         history.append({
-            "epoch": epoch,"train_loss": train_loss,"val_loss": val_loss,
-            "epoch_time_sec": time.time() - start_time,
+            "epoch": epoch,"train_loss": round(train_loss, 4),"val_loss": round(val_loss,4),
+            "epoch_time_sec": round(time.time() - start_time,4),
         })
         os.makedirs(checkpoint_dir, exist_ok=True)
         if epoch in CHECKPOINT_EPOCHS:
@@ -508,7 +512,7 @@ def train_model(
         "seed": SEED,
         "config": config,
         "history": history,
-        "final_val_loss": history[-1]["val_loss"],
+        "final_val_loss": round(history[-1]["val_loss"],4),
         "total_params": sum(p.numel() for p in model.parameters()),
     }
     with open(log_path, "w") as f:
@@ -567,7 +571,9 @@ def generate(
             probs = F.softmax(last_logits, dim=-1)
             new_token = torch.multinomial(probs, num_samples=1).item()
             context.append(new_token)
-    return "".join(itos[idx] for idx in context)   
+    text = "".join(itos[idx] for idx in context)
+    # print("Generated text:", text)
+    return text
 
 
 # ---------------------------------------------------------------------------
